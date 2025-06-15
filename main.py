@@ -1,7 +1,9 @@
 import pygame
 import time
 import random
-
+import player
+import pipe as Pipe
+import button
 rnd = random.Random()
 
 screenResVertical = [(240,320),     # 240p          1
@@ -37,31 +39,16 @@ paused = False
 deltaTime = 0
 first=True
 DIED = pygame.USEREVENT + 1  # custom event for player death
-died = False
+inMenu = False
 
 # player settings
-playerSize = int(min(screenSize) * 0.1)  # 5% of the smaller screen dimension
-playerPos = pygame.Vector2(screen.get_width() / 2, screen.get_height() / 2)
-gravity = screen.get_height() * 0.7
-score = 0
-# jump settings
-jumpHeight = screenSize[1] * 0.4  # 25% of screen height
-jumpForce = jumpHeight
-isJumping = False
-jumpped = False
-canJump = True
-isFalling = True
-justDied = False
-
-player_sprite_sheet = pygame.image.load("player.png").convert_alpha()
-player_sprite_height = player_sprite_sheet.get_height() 
-player_sprite_width = player_sprite_sheet.get_width() // 3
-
-player_frame_up = player_sprite_sheet.subsurface(pygame.Rect(0, 0, player_sprite_width, player_sprite_height))
-player_frame_down = player_sprite_sheet.subsurface(pygame.Rect( player_sprite_width,0, player_sprite_width, player_sprite_height))
-player_frame_dead = player_sprite_sheet.subsurface(pygame.Rect( player_sprite_width*2,0, player_sprite_width, player_sprite_height))
-
-playerHitbox = Rect(playerPos.x - playerSize/2, playerPos.y - playerSize/2, playerSize,playerSize) # player hitbox, used for collision detection
+bird = player.Player(playerHeight=int(min(screenSize)*0.1),
+                     playerWidth=int((min(screenSize)*0.1)*(17/12)),
+                     playerX=screen.get_width()/2,
+                     playerY=screen.get_height()/2,
+                     jumpHeight=screen.get_height()*0.4,
+                     gravity=screen.get_height()*0.7,)
+highscore = 0
 
 # load background image
 background_img = pygame.image.load("background.png").convert()
@@ -86,7 +73,7 @@ pipe_frame_bottom = pipe_sprite_sheet.subsurface(pygame.Rect( 0,0, pipe_sprite_w
 pipeWidth = int(screenSize[0] * 0.1)  # 10% of screen width
 pipeHeight = screenSize[1]
 
-pipeGap = int(playerSize*5)  # 25% of screen height, gap between the pipes
+pipeGap = int(bird.get_height()*5)  # 5 times the player height, gap between the pipes
 
 def get_pipe_margin(gap_center: float, gap_size: float):
     top = gap_center * pipeHeight - gap_size / 2
@@ -99,7 +86,7 @@ screenCollider = Rect(0,0,screenSize[0]+pipeWidth*2,screenSize[1])
 
 pipes = []
 
-def spawn_pipes():
+def spawn_pipes(gaploc=None):
     global pipes
 
     min_visible_pipe_height = screenSize[1]*0.05  # always leave at least 40px of pipe visible
@@ -108,8 +95,10 @@ def spawn_pipes():
     gap_half = pipeGap / 2
     min_center = (min_visible_pipe_height + gap_half) / pipeHeight
     max_center = 1 - min_center
-
-    gapPlace = rnd.uniform(min_center, max_center)
+    if not gaploc:
+        gapPlace = rnd.uniform(min_center, max_center)
+    else:
+        gapPlace = gaploc
 
     # Get top and bottom pipe sizes
     top_margin, bottom_margin = get_pipe_margin(gapPlace, pipeGap)
@@ -125,75 +114,31 @@ def spawn_pipes():
     pipes.append(pipeBottom)
 
 def events_handler():
-    global running, score, paused, died, playerPos, playerHitbox, pipes, first, deltaTime, jumpForce, isJumping, jumpped, canJump, isFalling, justDied 
+    global running, paused, bird, pipes, first, deltaTime,justDied 
     for event in pygame.event.get():
         if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE) :
             running = False
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_p:
-                if died:
+                if bird.get_died():
                     continue
                 paused = not paused
         if event.type == DIED:
             pygame.time.set_timer(DIED, 0)  # stop the DIED event timer
-            died = True
+            bird.set_died(True)
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_SPACE:
-                if died:
-                    died = False
+                if bird.get_died():
                     paused = False
-                    justDied = True
+                    bird.set_just_died(True)
                     # reset the game state
-                    score = 0
                     pipes.clear()
                     first = True
-                    reset_player()
-        
-def reset_player():
-    global playerPos, playerHitbox, jumpForce, isJumping, jumpped, canJump
-    playerPos = pygame.Vector2(screen.get_width() / 2, screen.get_height() / 2)
-    playerHitbox = Rect(playerPos.x - playerSize/2, playerPos.y - playerSize/2, playerSize, playerSize)
-    jumpForce = jumpHeight
-    isJumping = False
-    jumpped = False
-    canJump = True
+                    bird.reset_player(location=pygame.Vector2(screen.get_width()/2,screen.get_height()/2))
 
-def jumping(keys_pressed):
-    global isJumping, jumpped, jumpForce, canJump, isFalling, gravity, playerHitbox, playerPos, justDied
-    global playerHitbox, playerPos
-
-    if keys_pressed[pygame.K_SPACE]:
-        isJumping = True
-        jumpped = True
-        
-    else:
-        jumpped = False
-
-    if isJumping:   
-        canJump = True
-        isFalling = False
-        playerPos.y -= jumpForce * deltaTime
-        jumpForce -= gravity * deltaTime
-        if jumpped and jumpForce < jumpHeight / 2:
-            canJump = False
-        if not canJump:
-            isFalling = True
-            jumpForce = jumpHeight
-        if jumpForce < -gravity:
-            isFalling = True
-            isJumping = False
-        if jumpForce <= jumpHeight/2:
-            isFalling = True
-    else:
-        isFalling = True
-        playerPos.y += gravity * deltaTime
-
-    # Update hitbox from playerPos (center of player)
-    playerHitbox.topleft = (playerPos.x - playerSize / 2, playerPos.y - playerSize / 2)
-
-def draw_text_with_outline_centered(text, font, text_color, outline_color, screen, outline_thickness=2):
+def draw_text_with_outline(text, font, text_color, outline_color, screen, location,outline_thickness=2):
     text_surface = font.render(text, True, text_color)
-    text_rect = text_surface.get_rect(center=(screen.get_width() // 2, screen.get_height() // 2))
+    text_rect = text_surface.get_rect(center=(location[0], location[1]))
 
     # Draw outline around the text
     for dx in [-outline_thickness, 0, outline_thickness]:
@@ -238,6 +183,7 @@ def draw_outlined_multiline_text_centered(text, font, text_color, outline_color,
 
         start_y += surf.get_height() + line_spacing
 
+font = pygame.font.SysFont(None, screenSize[0] // 10)
 #program run
 while running:
 
@@ -246,12 +192,16 @@ while running:
     
     # set the frame rate
     deltaTime = clock.tick(fps) / 1000
+    bird.set_delta_time(dt=deltaTime)
+
+    if inMenu:
+        print("UI time")
+        continue
 
     # if the game is paused, skip the rest of the loop
     if paused:
-        font = pygame.font.SysFont(None, screenSize[0] // 10)
         draw_outlined_multiline_text_centered(
-            "Game Paused\nScore: "+ str(score),
+            "Game Paused",
             font,
             text_color=(255, 255, 255),
             outline_color=(0, 0, 0),
@@ -259,7 +209,6 @@ while running:
             line_spacing=10,
             outline_thickness=2
         )
-
         pygame.display.flip()
         # if the game is paused, skip the rest of the loop
         continue
@@ -267,19 +216,13 @@ while running:
     #ensures the pipes are spawned at the start of the game
     if first:
         first=False
-        spawn_pipes()
+        spawn_pipes(0.5)
 
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((135,206,255))
     
-    if bg_scroll_x <= -background_width:
-            bg_scroll_x = 0
-    # Draw background twice for seamless scrolling
-    screen.blit(background_img, (bg_scroll_x, 0))
-    screen.blit(background_img, (bg_scroll_x + screenSize[0], 0))
-
-    if not died:
-        # Update background scroll
+    # Update background scroll if not dead
+    if not bird.get_died():
         bg_scroll_x -= bg_scroll_speed * deltaTime
         if bg_scroll_x <= -background_width:
             bg_scroll_x = 0
@@ -288,14 +231,10 @@ while running:
     screen.blit(background_img, (bg_scroll_x, 0))
     screen.blit(background_img, (bg_scroll_x + background_width, 0))
 
+    pygame.draw.rect(screen, "red", bird.get_player_hitbox())
 
-
-    # Choose frame
-    current_frame = player_frame_dead if died else player_frame_down if isFalling else player_frame_up
-    # Resize the sprite to match the player's hitbox
-    resized_frame = pygame.transform.scale(current_frame, (playerHitbox.width, playerHitbox.height))
-    # Draw sprite instead of red rectangle
-    screen.blit(resized_frame, playerHitbox.topleft)
+    # Draw player sprite
+    screen.blit(bird.currentFrame, bird.get_player_hitbox().topleft)
 
     # draw the pipes
     for pipe in pipes:
@@ -325,11 +264,9 @@ while running:
         screen.blit(scaled_pipe, (pipe.left, y))
 
     # death handling
-    if died:
-        
-        font = pygame.font.SysFont(None, screenSize[0] // 10)
+    if bird.get_died():
         draw_outlined_multiline_text_centered(
-            "You Died!\nFinal Score: "+ str(score),
+            ("You Died!\nFinal Score: "+ str(bird.get_score())+"\nHigh Score: "+ str(highscore)) if highscore>bird.get_score() else ("You Died!\nNew High Score!\nHigh Score: "+ str(bird.get_score())) ,
             font,
             text_color=(255, 255, 255),
             outline_color=(0, 0, 0),
@@ -337,6 +274,8 @@ while running:
             line_spacing=10,
             outline_thickness=2
         )
+        if highscore<bird.get_score():
+            highscore=bird.get_score()
         time.sleep(0.1)  # wait for 2 seconds before restarting
         pygame.display.flip()
         continue
@@ -345,14 +284,13 @@ while running:
     # get the set of keys pressed
     keys_pressed = pygame.key.get_pressed()
 
-    if justDied:
+    if bird.get_just_died():
         time.sleep(0.1)  # wait for a short moment to show the death screen
-        justDied = False
-        reset_player()
+        bird.set_just_died(False)
     
     else:
         # jumping
-        jumping(keys_pressed)
+        bird.jumping(keys_pressed)
 
     # pipe movement
     for pipe in pipes:
@@ -378,10 +316,10 @@ while running:
 
     # collision detection
     for pipe in pipes:
-        if pipe.colliderect(playerHitbox):
+        if pipe.colliderect(bird.get_player_hitbox()):
             pygame.time.set_timer(DIED, 1)  # set a timer for the DIED event
         
-    if playerHitbox[1] < 0 or playerHitbox[1] > screenSize[1] - playerSize:
+    if bird.get_player_hitbox()[1] < 0 or bird.get_player_hitbox()[1] > screenSize[1] - bird.get_height():
         pygame.time.set_timer(DIED, 1)  # set a timer for the DIED event
 
     
@@ -389,11 +327,20 @@ while running:
     # score calculation
     try:
         if pipes:
-            if pipes[len(pipes)-3][0] < playerHitbox[0] and pipes[len(pipes)-3][0] > playerHitbox[0] - screen.get_width()//2*deltaTime:
-                score += 1
+            if pipes[len(pipes)-3][0] < bird.get_player_hitbox()[0] and pipes[len(pipes)-3][0] > bird.get_player_hitbox()[0] - screen.get_width()//2*deltaTime:
+                bird.set_score(bird.get_score()+1)
     except IndexError:
         pass
-
+    
+    draw_text_with_outline (
+        str(bird.get_score()),
+        font,
+        text_color=(255, 255, 255),
+        outline_color=(0, 0, 0),
+        screen=screen,
+        location=(screenSize[0]//2,screenSize[1]*0.1),
+        outline_thickness=2
+    )
 
     # flip() the display to put your work on screen
     pygame.display.flip()
