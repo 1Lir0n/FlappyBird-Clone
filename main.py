@@ -1,9 +1,9 @@
 import pygame
 import time
 import random
-import player
-import pipe as Pipe
-import button
+from player import *
+from pipe import *
+from button import *
 rnd = random.Random()
 
 screenResVertical = [(240,320),     # 240p          1
@@ -26,7 +26,7 @@ screenResVertical = [(240,320),     # 240p          1
                      (2160,4096)]   # 2160p (4K)    18
 
 # game settings
-screenSize = screenResVertical[13][::-1] # screen resolution for the game
+screenSize = screenResVertical[3][::1] # screen resolution for the game
 fps = 60 # game frame per second lock
 
 # pygame setup
@@ -42,13 +42,16 @@ DIED = pygame.USEREVENT + 1  # custom event for player death
 inMenu = False
 
 # player settings
-bird = player.Player(playerHeight=int(min(screenSize)*0.1),
-                     playerWidth=int((min(screenSize)*0.1)*(17/12)),
+bird = Player(playerHeight=int(min(screenSize)*0.05),
+                     playerWidth=int((min(screenSize)*0.05)*(17/12)),
                      playerX=screen.get_width()/2,
                      playerY=screen.get_height()/2,
                      jumpHeight=screen.get_height()*0.4,
                      gravity=screen.get_height()*0.7,)
 highscore = 0
+
+pipes_obj = Pipes(playerHeight=int(min(screenSize)*0.1),
+              surface=screen)
 
 # load background image
 background_img = pygame.image.load("background.png").convert()
@@ -59,59 +62,10 @@ new_width = int(background_width * scale_ratio)
 background_img = pygame.transform.scale(background_img, (new_width, screenSize[1]))
 background_width = new_width
 bg_scroll_x = 0
-bg_scroll_speed = screen.get_width()//4  # background moves slower than pipes
-
-pipe_sprite_sheet = pygame.image.load("pipes.png").convert_alpha()
-pipe_sprite_height = pipe_sprite_sheet.get_height() 
-pipe_sprite_width = pipe_sprite_sheet.get_width() // 2
-
-pipe_frame_top = pipe_sprite_sheet.subsurface(pygame.Rect( pipe_sprite_width,0, pipe_sprite_width, pipe_sprite_height))
-pipe_frame_bottom = pipe_sprite_sheet.subsurface(pygame.Rect( 0,0, pipe_sprite_width, pipe_sprite_height))
-
-# pipe settings
-# pipe width and height
-pipeWidth = int(screenSize[0] * 0.1)  # 10% of screen width
-pipeHeight = screenSize[1]
-
-pipeGap = int(bird.get_height()*5)  # 5 times the player height, gap between the pipes
-
-def get_pipe_margin(gap_center: float, gap_size: float):
-    top = gap_center * pipeHeight - gap_size / 2
-    bottom = pipeHeight - (gap_center * pipeHeight + gap_size / 2)
-    return (top, bottom)
- 
+bg_scroll_speed = screen.get_width()//4  # background moves slower than pipes 
 
 # screen collider  
-screenCollider = Rect(0,0,screenSize[0]+pipeWidth*2,screenSize[1])
-
-pipes = []
-
-def spawn_pipes(gaploc=None):
-    global pipes
-
-    min_visible_pipe_height = screenSize[1]*0.05  # always leave at least 40px of pipe visible
-
-    # Clamp gap center to avoid fully hidden pipes
-    gap_half = pipeGap / 2
-    min_center = (min_visible_pipe_height + gap_half) / pipeHeight
-    max_center = 1 - min_center
-    if not gaploc:
-        gapPlace = rnd.uniform(min_center, max_center)
-    else:
-        gapPlace = gaploc
-
-    # Get top and bottom pipe sizes
-    top_margin, bottom_margin = get_pipe_margin(gapPlace, pipeGap)
-
-    # Ensure values are rounded (pygame.Rect expects integers)
-    top_margin = round(top_margin)
-    bottom_margin = round(bottom_margin)
-
-    pipeTop = Rect(screen.get_width(), 0, pipeWidth, top_margin)
-    pipeBottom = Rect(screen.get_width(), screen.get_height() - bottom_margin, pipeWidth, bottom_margin)
-
-    pipes.append(pipeTop)
-    pipes.append(pipeBottom)
+screenCollider = Rect(0,0,screenSize[0]+pipes_obj.get_pipe_width()*2,screenSize[1])
 
 def events_handler():
     global running, paused, bird, pipes, first, deltaTime,justDied 
@@ -132,7 +86,7 @@ def events_handler():
                     paused = False
                     bird.set_just_died(True)
                     # reset the game state
-                    pipes.clear()
+                    pipes_obj.clear_pipes()
                     first = True
                     bird.reset_player(location=pygame.Vector2(screen.get_width()/2,screen.get_height()/2))
 
@@ -183,6 +137,7 @@ def draw_outlined_multiline_text_centered(text, font, text_color, outline_color,
 
         start_y += surf.get_height() + line_spacing
 
+counter = 0
 font = pygame.font.SysFont(None, screenSize[0] // 10)
 #program run
 while running:
@@ -193,6 +148,7 @@ while running:
     # set the frame rate
     deltaTime = clock.tick(fps) / 1000
     bird.set_delta_time(dt=deltaTime)
+    pipes_obj.set_delta_time(dt=deltaTime)
 
     if inMenu:
         print("UI time")
@@ -216,7 +172,7 @@ while running:
     #ensures the pipes are spawned at the start of the game
     if first:
         first=False
-        spawn_pipes(0.5)
+        pipes_obj.spawn_pipes()
 
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((135,206,255))
@@ -231,37 +187,11 @@ while running:
     screen.blit(background_img, (bg_scroll_x, 0))
     screen.blit(background_img, (bg_scroll_x + background_width, 0))
 
-    pygame.draw.rect(screen, "red", bird.get_player_hitbox())
-
     # Draw player sprite
     screen.blit(bird.currentFrame, bird.get_player_hitbox().topleft)
 
     # draw the pipes
-    for pipe in pipes:
-        # pygame.draw.rect(screen, (15, 171, 41), pipe)
-
-        # Calculate scale factor (scale by width)
-        scale_factor = pipe.width / pipe_sprite_width
-        new_height = int(pipe_sprite_height * scale_factor)
-    
-        # Scale uniformly
-        if pipe.top == 0:
-            pipe_frame = pipe_frame_top
-        else:
-            pipe_frame = pipe_frame_bottom
-
-        scaled_pipe = pygame.transform.scale(pipe_frame, (pipe.width, new_height))
-    
-        # Position
-        if pipe.top == 0:
-            # Align bottom of image with bottom of top pipe
-            y = pipe.bottom - new_height
-        else:
-            # Align top of image with top of bottom pipe
-            y = pipe.top
-    
-        # Draw
-        screen.blit(scaled_pipe, (pipe.left, y))
+    pipes = pipes_obj.draw_pipes()
 
     # death handling
     if bird.get_died():
@@ -293,29 +223,28 @@ while running:
         bird.jumping(keys_pressed)
 
     # pipe movement
-    for pipe in pipes:
-        pipe.move_ip(-screen.get_width()//2*deltaTime,0)  # move pipes to the left
-
+    pipes_obj.move_pipes() # move pipes to the left
     # pipe spawning
     try:
         if screen.get_width() < screen.get_height():
-            if  pipes[len(pipes)-1][0] <= screen.get_width()/2 - pipeWidth*2:
-                spawn_pipes()
+            if  pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-1][0] <= screen.get_width()/2 - pipes_obj.get_pipe_width()*2:
+                pipes_obj.spawn_pipes(gapLocation=2)
         else:
-            if  pipes[len(pipes)-1][0] <= screen.get_width()/1.25 - pipeWidth*2:
-                spawn_pipes()
-    except:
-        if not pipes:
-            spawn_pipes()
+            if  pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-1][0] <= screen.get_width()/1.25 - pipes_obj.get_pipe_width()*2:
+                pipes_obj.spawn_pipes(gapLocation=2)
+    except Exception as e:
+        print(e)
+        if not pipes_obj.get_pipes():
+            pipes_obj.spawn_pipes(gapLocation=2 )
 
     # pipe remove
-    for pipe in pipes:
+    for pipe in pipes_obj.get_pipes():
         if not pipe.colliderect(screenCollider):
-            pipes.remove(pipe)
+            pipes_obj.remove_pipe(pipe)
     
 
     # collision detection
-    for pipe in pipes:
+    for pipe in pipes_obj.get_pipes():
         if pipe.colliderect(bird.get_player_hitbox()):
             pygame.time.set_timer(DIED, 1)  # set a timer for the DIED event
         
@@ -326,8 +255,8 @@ while running:
 
     # score calculation
     try:
-        if pipes:
-            if pipes[len(pipes)-3][0] < bird.get_player_hitbox()[0] and pipes[len(pipes)-3][0] > bird.get_player_hitbox()[0] - screen.get_width()//2*deltaTime:
+        if pipes_obj.get_pipes():
+            if pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-3][0] < bird.get_player_hitbox()[0] and pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-3][0] > bird.get_player_hitbox()[0] - screen.get_width()//2*deltaTime:
                 bird.set_score(bird.get_score()+1)
     except IndexError:
         pass
