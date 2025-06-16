@@ -50,7 +50,7 @@ bird = Player(playerHeight=int(min(screenSize)*0.05),
                      gravity=screen.get_height()*0.7,)
 highscore = 0
 
-pipes_obj = Pipes(playerHeight=int(min(screenSize)*0.1),
+pipes = Pipes(playerHeight=int(min(screenSize)*0.1),
               surface=screen)
 
 # load background image
@@ -65,10 +65,10 @@ bg_scroll_x = 0
 bg_scroll_speed = screen.get_width()//4  # background moves slower than pipes 
 
 # screen collider  
-screenCollider = Rect(0,0,screenSize[0]+pipes_obj.get_pipe_width()*2,screenSize[1])
+screenCollider = Rect(0,0,screenSize[0]+pipes.get_pipe_width()*2,screenSize[1])
 
 def events_handler():
-    global running, paused, bird, pipes, first, deltaTime,justDied 
+    global running, paused, bird, pipes, first, deltaTime 
     for event in pygame.event.get():
         if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE) :
             running = False
@@ -86,7 +86,7 @@ def events_handler():
                     paused = False
                     bird.set_just_died(True)
                     # reset the game state
-                    pipes_obj.clear_pipes()
+                    pipes.clear_pipes()
                     first = True
                     bird.reset_player(location=pygame.Vector2(screen.get_width()/2,screen.get_height()/2))
 
@@ -148,7 +148,7 @@ while running:
     # set the frame rate
     deltaTime = clock.tick(fps) / 1000
     bird.set_delta_time(dt=deltaTime)
-    pipes_obj.set_delta_time(dt=deltaTime)
+    pipes.set_delta_time(dt=deltaTime)
 
     if inMenu:
         print("UI time")
@@ -172,7 +172,7 @@ while running:
     #ensures the pipes are spawned at the start of the game
     if first:
         first=False
-        pipes_obj.spawn_pipes()
+        pipes.spawn_pipes()
 
     # fill the screen with a color to wipe away anything from last frame
     screen.fill((135,206,255))
@@ -191,7 +191,7 @@ while running:
     screen.blit(bird.currentFrame, bird.get_player_hitbox().topleft)
 
     # draw the pipes
-    pipes = pipes_obj.draw_pipes()
+    pipes.draw_pipes()
 
     # death handling
     if bird.get_died():
@@ -223,40 +223,39 @@ while running:
         bird.jumping(keys_pressed)
 
     # pipe movement
-    pipes_obj.move_pipes() # move pipes to the left
+    pipes.move_pipes() # move pipes to the left
     # pipe spawning
     try:
         if screen.get_width() < screen.get_height():
-            if  pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-1][0] <= screen.get_width()/2 - pipes_obj.get_pipe_width()*2:
-                pipes_obj.spawn_pipes(gapLocation=2)
+            if  pipes.get_pipes()[len(pipes.get_pipes())-1][0] <= screen.get_width()/2 - pipes.get_pipe_width()*2:
+                pipes.spawn_pipes(gapLocation=2)
         else:
-            if  pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-1][0] <= screen.get_width()/1.25 - pipes_obj.get_pipe_width()*2:
-                pipes_obj.spawn_pipes(gapLocation=2)
+            if  pipes.get_pipes()[len(pipes.get_pipes())-1][0] <= screen.get_width()/1.25 - pipes.get_pipe_width()*2:
+                pipes.spawn_pipes(gapLocation=2)
     except Exception as e:
         print(e)
-        if not pipes_obj.get_pipes():
-            pipes_obj.spawn_pipes(gapLocation=2 )
+        if not pipes.get_pipes():
+            pipes.spawn_pipes(gapLocation=2 )
 
     # pipe remove
-    for pipe in pipes_obj.get_pipes():
+    for pipe in pipes.get_pipes():
         if not pipe.colliderect(screenCollider):
-            pipes_obj.remove_pipe(pipe)
+            pipes.remove_pipe(pipe)
     
 
     # collision detection
-    for pipe in pipes_obj.get_pipes():
+    for pipe in pipes.get_pipes():
         if pipe.colliderect(bird.get_player_hitbox()):
             pygame.time.set_timer(DIED, 1)  # set a timer for the DIED event
         
     if bird.get_player_hitbox()[1] < 0 or bird.get_player_hitbox()[1] > screenSize[1] - bird.get_height():
         pygame.time.set_timer(DIED, 1)  # set a timer for the DIED event
 
-    
 
     # score calculation
     try:
-        if pipes_obj.get_pipes():
-            if pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-3][0] < bird.get_player_hitbox()[0] and pipes_obj.get_pipes()[len(pipes_obj.get_pipes())-3][0] > bird.get_player_hitbox()[0] - screen.get_width()//2*deltaTime:
+        if pipes.get_pipes():
+            if pipes.get_pipes()[len(pipes.get_pipes())-3][0] < bird.get_player_hitbox()[0] and pipes.get_pipes()[len(pipes.get_pipes())-3][0] > bird.get_player_hitbox()[0] - screen.get_width()//2*deltaTime:
                 bird.set_score(bird.get_score()+1)
     except IndexError:
         pass
